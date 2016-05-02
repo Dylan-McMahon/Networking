@@ -1,6 +1,24 @@
 #pragma once
 
 #include "BaseApplication.h"
+#include "../ServerApplication/GameMessages.h"
+#include "../dep/glm/glm/ext.hpp"
+#include "../ServerApplication/GameObject.h"
+#include "Gizmos.h"
+#include "Camera.h"
+
+#include <vector>
+#include <GLFW/glfw3.h>
+
+#include <iostream>
+#include <string>
+
+#include <RakPeerInterface.h>
+#include <MessageIdentifiers.h>
+#include <BitStream.h>
+#include <Rand.h>
+
+typedef unsigned int uint;
 
 namespace RakNet {
 	class RakPeerInterface;
@@ -24,9 +42,21 @@ public:
 
 	//Handle incoming packets
 	void HandleNetworkMessages();
+	void readObjectsFromServer(RakNet::BitStream& bsIn);
+
+	//Handle GameObjects
+	void createGameObject();
+	void moveClientObject(float deltatime);
+	void sendUpdatedObjectPositionToServer(GameObject& myClientObject);
 
 private:
 	RakNet::RakPeerInterface* m_pPeerInterface;
 	const char* IP = "127.0.0.1";
 	const unsigned short PORT = 5456;
+	uint m_uiClientID;
+	uint m_uiClientObjectIndex;
+	glm::vec3 m_myColour;
+	std::vector<GameObject> m_gameObjects;
+	Camera* m_pCamera;
+
 };
