@@ -34,6 +34,7 @@ protected:
 
 	void createNewObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSysAddress);
 	void sendGameObjectToAllClients(GameObject& gameObject, RakNet::SystemAddress& ownerSystemAddress);
+	void moveGameObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSystemAddress);
 
 private:
 

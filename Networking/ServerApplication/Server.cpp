@@ -62,16 +62,8 @@ void Server::handleNetworkMessages() {
 			{
 				RakNet::BitStream bsIn(pPacket->data, pPacket->length, false);
 				bsIn.IgnoreBytes(sizeof(RakNet::MessageID));
-				GameObject newGameObject;
-
-				bsIn.Read(newGameObject.fXPos);
-				bsIn.Read(newGameObject.fZPos);
-				bsIn.Read(newGameObject.uiObjectID);
-				m_gameObjects[newGameObject.uiObjectID].fXPos = newGameObject.fXPos;
-				m_gameObjects[newGameObject.uiObjectID].fZPos = newGameObject.fZPos;
-
-				RakNet::SystemAddress unassignedAddress = RakNet::UNASSIGNED_SYSTEM_ADDRESS;
-				sendGameObjectToAllClients(newGameObject, unassignedAddress);
+				moveGameObject(bsIn, pPacket->systemAddress);
+				break;
 			}
 			default:
 				std::cout << "Received a message with a unknown ID: " << pPacket->data[0];
@@ -131,8 +123,15 @@ void Server::createNewObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& own
 	newGameObject.uiObjectID = m_uiConnectionCounter++;
 
 	m_gameObjects.push_back(newGameObject);
-	RakNet::SystemAddress unassignedAddress = RakNet::UNASSIGNED_SYSTEM_ADDRESS;
-	sendGameObjectToAllClients(newGameObject, unassignedAddress);
+
+	for (int i = 0; i < m_connectedClients.size(); i++)
+	{
+		if (m_connectedClients[i].uiConnectionID != newGameObject.uiOwnerClientID)
+		{
+			sendGameObjectToAllClients(newGameObject, m_connectedClients[i].sysAddress);
+		}
+	}
+	
 }
 
 void Server::sendGameObjectToAllClients(GameObject& gameObject, RakNet::SystemAddress& ownerSystemAddress)
@@ -148,4 +147,26 @@ void Server::sendGameObjectToAllClients(GameObject& gameObject, RakNet::SystemAd
 	bsOut.Write(gameObject.uiObjectID);
 
 	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, ownerSystemAddress, true);
+}
+
+void Server::moveGameObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSystemAddress)
+{
+	GameObject myClientObject;
+	bsIn.Read(myClientObject);
+
+	for (int i = 0; i < m_gameObjects.size(); i++)
+	{
+		if (m_gameObjects[i].uiObjectID == myClientObject.uiObjectID)
+		{
+			m_gameObjects[i] = myClientObject;
+
+			for (int j = 0; j < m_connectedClients.size(); j++)
+			{
+				if (m_connectedClients[j].uiConnectionID != m_gameObjects[i].uiOwnerClientID)
+				{
+					sendGameObjectToAllClients(m_gameObjects[i], m_connectedClients[j].sysAddress);
+				}
+			}
+		}
+	}
 }

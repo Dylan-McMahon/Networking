@@ -32,6 +32,7 @@ bool BasicNetworkingApplication::update(float deltaTime) {
 		return false;
 	HandleNetworkMessages();
 	m_pCamera->update(deltaTime);
+	moveClientObject(deltaTime);
 	return true;
 }
 
@@ -218,7 +219,7 @@ void BasicNetworkingApplication::moveClientObject(float deltatime)
 	}
 	if (glfwGetKey(m_window, GLFW_KEY_K))
 	{
-		myClientObject.fZPos += 2 * deltatime;
+		myClientObject.fZPos -= 2 * deltatime;
 		bUpdatedObjectPostion = true;
 	}
 
@@ -233,7 +234,6 @@ void BasicNetworkingApplication::sendUpdatedObjectPositionToServer(GameObject& m
 {
 	RakNet::BitStream bsOut;
 	bsOut.Write((RakNet::MessageID)GameMessages::ID_CLIENT_UPDATE_OBJECT_POSITION);
-	bsOut.Write(myClientObject.fXPos);
-	bsOut.Write(myClientObject.fZPos);
+	bsOut.Write(myClientObject);
 	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
 }
