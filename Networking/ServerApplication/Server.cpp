@@ -3,6 +3,9 @@
 Server::Server() {
 	// initialize the Raknet peer interface first
 	m_pPeerInterface = RakNet::RakPeerInterface::GetInstance();
+	//Lag simulation
+	m_pPeerInterface->ApplyNetworkSimulator(0.f, 300, 20);
+
 
 	m_uiConnectionCounter = 1;
 	m_uiObjectCounter = 1;
@@ -65,6 +68,13 @@ void Server::handleNetworkMessages() {
 				moveGameObject(bsIn, pPacket->systemAddress);
 				break;
 			}
+			case ID_CLIENT_UPDATE_OBJECT_VELOCITY:
+			{
+				RakNet::BitStream bsIn(pPacket->data, pPacket->length, false);
+				bsIn.IgnoreBytes(sizeof(RakNet::MessageID));
+				moveGameObject(bsIn, pPacket->systemAddress);
+				break;
+			}
 			default:
 				std::cout << "Received a message with a unknown ID: " << pPacket->data[0];
 				break;
@@ -113,12 +123,7 @@ void Server::createNewObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& own
 {
 	GameObject newGameObject;
 
-	bsIn.Read(newGameObject.fXPos);
-	bsIn.Read(newGameObject.fZPos);
-	bsIn.Read(newGameObject.fRedColour);
-	bsIn.Read(newGameObject.fGreenColour);
-	bsIn.Read(newGameObject.fBlueColour);
-
+	bsIn.Read(newGameObject);
 	newGameObject.uiOwnerClientID = systemAddressToClientID(ownerSysAddress);
 	newGameObject.uiObjectID = m_uiConnectionCounter++;
 
@@ -138,14 +143,7 @@ void Server::sendGameObjectToAllClients(GameObject& gameObject, RakNet::SystemAd
 {
 	RakNet::BitStream bsOut;
 	bsOut.Write((RakNet::MessageID)GameMessages::ID_SERVER_FULL_OBJECT_DATA);
-	bsOut.Write(gameObject.fXPos);
-	bsOut.Write(gameObject.fZPos);
-	bsOut.Write(gameObject.fRedColour);
-	bsOut.Write(gameObject.fGreenColour);
-	bsOut.Write(gameObject.fBlueColour);
-	bsOut.Write(gameObject.uiOwnerClientID);
-	bsOut.Write(gameObject.uiObjectID);
-
+	bsOut.Write(gameObject);
 	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, ownerSystemAddress, true);
 }
 
@@ -159,6 +157,30 @@ void Server::moveGameObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& owne
 		if (m_gameObjects[i].uiObjectID == myClientObject.uiObjectID)
 		{
 			m_gameObjects[i] = myClientObject;
+			for (int j = 0; j < m_connectedClients.size(); j++)
+			{
+				if (m_connectedClients[j].uiConnectionID != m_gameObjects[i].uiOwnerClientID)
+				{
+					sendGameObjectToAllClients(m_gameObjects[i], m_connectedClients[j].sysAddress);
+				}
+			}
+		}
+	}
+}
+
+void Server::LerpObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSystemAddress)
+{
+	GameObject myClientObject;
+	bsIn.Read(myClientObject);
+
+	for (int i = 0; i < m_gameObjects.size(); i++)
+	{
+		if (m_gameObjects[i].uiObjectID == myClientObject.uiObjectID)
+		{
+			m_gameObjects[i] = myClientObject;
+			//lerp object
+
+			m_gameObjects[i].position += glm::vec3(myClientObject.Velocity, 0);
 
 			for (int j = 0; j < m_connectedClients.size(); j++)
 			{

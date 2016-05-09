@@ -48,6 +48,10 @@ public:
 	void createGameObject();
 	void moveClientObject(float deltatime);
 	void sendUpdatedObjectPositionToServer(GameObject& myClientObject);
+	void sendObjectVelocityToServer(GameObject& myClientObject);
+
+	//handle input
+	void handleInput(float deltatime);
 
 private:
 	RakNet::RakPeerInterface* m_pPeerInterface;

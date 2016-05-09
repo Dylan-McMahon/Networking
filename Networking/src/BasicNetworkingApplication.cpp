@@ -32,7 +32,11 @@ bool BasicNetworkingApplication::update(float deltaTime) {
 		return false;
 	HandleNetworkMessages();
 	m_pCamera->update(deltaTime);
-	moveClientObject(deltaTime);
+	if (m_gameObjects.size() != 0)
+	{
+		handleInput(deltaTime);
+		moveClientObject(deltaTime);
+	}
 	return true;
 }
 
@@ -43,7 +47,7 @@ void BasicNetworkingApplication::draw() {
 	for (int i = 0; i < m_gameObjects.size(); i++)
 	{
 		GameObject& obj = m_gameObjects[i];
-		Gizmos::addSphere(glm::vec3(obj.fXPos, 2, obj.fZPos), 2, 32, 32, glm::vec4(obj.fRedColour, obj.fGreenColour, obj.fBlueColour, 1), nullptr);
+		Gizmos::addSphere(glm::vec3(obj.position.x, 2, obj.position.z), 2, 32, 32, glm::vec4(obj.fRedColour, obj.fGreenColour, obj.fBlueColour, 1), nullptr);
 	}
 	Gizmos::draw(m_pCamera->getProjectionView());
 }
@@ -142,13 +146,7 @@ void BasicNetworkingApplication::readObjectsFromServer(RakNet::BitStream& bsIn)
 	//Create temp object that we will pull all the objects data into
 	GameObject tempGameObject;
 	//Read in object data
-	bsIn.Read(tempGameObject.fXPos);
-	bsIn.Read(tempGameObject.fZPos);
-	bsIn.Read(tempGameObject.fRedColour);
-	bsIn.Read(tempGameObject.fGreenColour);
-	bsIn.Read(tempGameObject.fBlueColour);
-	bsIn.Read(tempGameObject.uiOwnerClientID);
-	bsIn.Read(tempGameObject.uiObjectID);
+	bsIn.Read(tempGameObject);
 	//Check to so if it exists already
 	bool bFound = false;
 	for (int i = 0; i < m_gameObjects.size(); i++)
@@ -158,12 +156,7 @@ void BasicNetworkingApplication::readObjectsFromServer(RakNet::BitStream& bsIn)
 			bFound = true;
 			//Update the object
 			GameObject& obj = m_gameObjects[i];
-			obj.fXPos = tempGameObject.fXPos;
-			obj.fZPos = tempGameObject.fZPos;
-			obj.fRedColour = tempGameObject.fRedColour;
-			obj.fGreenColour = tempGameObject.fGreenColour;
-			obj.fBlueColour = tempGameObject.fBlueColour;
-			obj.uiOwnerClientID = tempGameObject.uiOwnerClientID;
+			obj = tempGameObject;
 		}
 	}
 
@@ -184,19 +177,17 @@ void BasicNetworkingApplication::createGameObject()
 	RakNet::BitStream bsOut;
 
 	GameObject tempGameObject;
-	tempGameObject.fXPos = 0.0f;
-	tempGameObject.fZPos = 0.0f;
+	tempGameObject.position.x = 0.0f;
+	tempGameObject.position.z = 0.0f;
 	tempGameObject.fRedColour = m_myColour.r;
 	tempGameObject.fGreenColour = m_myColour.g;
 	tempGameObject.fBlueColour = m_myColour.b;
+	tempGameObject.fForce = 2.0f;	
+	tempGameObject.eSyncType = POSITION_ONLY;
 
 	//Copy the data to a packet
 	bsOut.Write((RakNet::MessageID)GameMessages::ID_CLIENT_CREATE_OBJECT);
-	bsOut.Write(tempGameObject.fXPos);
-	bsOut.Write(tempGameObject.fZPos);
-	bsOut.Write(tempGameObject.fRedColour);
-	bsOut.Write(tempGameObject.fGreenColour);
-	bsOut.Write(tempGameObject.fBlueColour);
+	bsOut.Write(tempGameObject);
 
 	//Send the data
 	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
@@ -208,25 +199,31 @@ void BasicNetworkingApplication::moveClientObject(float deltatime)
 	if (m_uiClientID == 0) return;
 	//Check Object validation
 	if (m_gameObjects.size() == 0) return;
-	bool bUpdatedObjectPostion = false;
 
 	//Check Movement
 	GameObject& myClientObject = m_gameObjects[m_uiClientObjectIndex];
-	if (glfwGetKey(m_window, GLFW_KEY_I))
-	{
-		myClientObject.fZPos += 2 * deltatime;
-		bUpdatedObjectPostion = true;
-	}
-	if (glfwGetKey(m_window, GLFW_KEY_K))
-	{
-		myClientObject.fZPos -= 2 * deltatime;
-		bUpdatedObjectPostion = true;
-	}
 
 	//Move the object
-	if (bUpdatedObjectPostion == true)
+
+	if (myClientObject.eSyncType == POSITION_ONLY)
 	{
-		sendUpdatedObjectPositionToServer(myClientObject);
+		if (myClientObject.bUpdatedObjectPostion == true)
+		{
+			sendUpdatedObjectPositionToServer(myClientObject);
+		}
+	}
+
+	if (myClientObject.eSyncType == LERP)
+	{
+		if (myClientObject.bUpdatedObjectPostion == true)
+		{
+			myClientObject.Velocity += (myClientObject.fForce / 1) * deltatime;
+		}
+		else
+		{
+			myClientObject.Velocity = glm::vec2(0);
+		}
+		sendObjectVelocityToServer(myClientObject);
 	}
 }
 
@@ -235,5 +232,47 @@ void BasicNetworkingApplication::sendUpdatedObjectPositionToServer(GameObject& m
 	RakNet::BitStream bsOut;
 	bsOut.Write((RakNet::MessageID)GameMessages::ID_CLIENT_UPDATE_OBJECT_POSITION);
 	bsOut.Write(myClientObject);
+	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
+}
+
+void BasicNetworkingApplication::handleInput(float deltatime)
+{
+	GameObject& myClientObject = m_gameObjects[m_uiClientObjectIndex];
+
+	if (glfwGetKey(m_window, GLFW_KEY_I))
+	{
+		myClientObject.position.z += myClientObject.fForce * deltatime;
+		myClientObject.bUpdatedObjectPostion = true;
+	}
+	if (glfwGetKey(m_window, GLFW_KEY_K))
+	{
+		myClientObject.position.z -= myClientObject.fForce * deltatime;
+		myClientObject.bUpdatedObjectPostion = true;
+	}
+
+	if (glfwGetKey(m_window, GLFW_KEY_1))
+	{
+		myClientObject.eSyncType = POSITION_ONLY;
+	}
+	if (glfwGetKey(m_window, GLFW_KEY_2))
+	{
+		myClientObject.eSyncType = LERP;
+	}
+	if (glfwGetKey(m_window, GLFW_KEY_3))
+	{
+		myClientObject.eSyncType = INTERPOLATION;
+	}
+}
+
+void BasicNetworkingApplication::sendObjectVelocityToServer(GameObject& myClientObject)
+{
+	//Check ID validation
+	if (m_uiClientID == 0) return;
+	//Check Object validation
+	if (m_gameObjects.size() == 0) return;
+
+	RakNet::BitStream bsOut;
+	bsOut.Write((RakNet::MessageID)GameMessages::ID_CLIENT_UPDATE_OBJECT_VELOCITY);
+	bsOut.Write(myClientObject.Velocity);
 	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
 }
