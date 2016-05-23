@@ -1,14 +1,18 @@
 #include "Server.h"
+#include <iostream>
 
 Server::Server() {
 	// initialize the Raknet peer interface first
 	m_pPeerInterface = RakNet::RakPeerInterface::GetInstance();
 	//Lag simulation
-	m_pPeerInterface->ApplyNetworkSimulator(0.f, 300, 20);
+	m_pPeerInterface->ApplyNetworkSimulator(0.f, 150, 20);
 
 
-	m_uiConnectionCounter = 1;
-	m_uiObjectCounter = 1;
+	m_uiConnectionCounter = 0;
+	m_uiObjectCounter = 0;
+	m_OldTime = 0.f;
+	m_NewTime = 0.f;
+	m_DeltaTime = 0.f;
 }
 
 Server::~Server() {
@@ -36,6 +40,9 @@ void Server::handleNetworkMessages() {
 	RakNet::Packet* pPacket = nullptr;
 
 	while (true) {
+
+		CalculateDeltaTime();
+
 		for (	pPacket = m_pPeerInterface->Receive();
 				pPacket;
 				m_pPeerInterface->DeallocatePacket(pPacket), pPacket = m_pPeerInterface->Receive()) {
@@ -72,7 +79,7 @@ void Server::handleNetworkMessages() {
 			{
 				RakNet::BitStream bsIn(pPacket->data, pPacket->length, false);
 				bsIn.IgnoreBytes(sizeof(RakNet::MessageID));
-				moveGameObject(bsIn, pPacket->systemAddress);
+				LerpObject(bsIn, pPacket->systemAddress, m_DeltaTime);
 				break;
 			}
 			default:
@@ -107,8 +114,6 @@ unsigned int Server::systemAddressToClientID(RakNet::SystemAddress& systemAddres
 			return it->first;
 		}
 	}
-
-	return 0;
 }
 
 void Server::sendClientIDToClient(unsigned int uiClientID) {
@@ -129,13 +134,13 @@ void Server::createNewObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& own
 
 	m_gameObjects.push_back(newGameObject);
 
-	for (int i = 0; i < m_connectedClients.size(); i++)
-	{
-		if (m_connectedClients[i].uiConnectionID != newGameObject.uiOwnerClientID)
-		{
-			sendGameObjectToAllClients(newGameObject, m_connectedClients[i].sysAddress);
-		}
-	}
+	//for (int i = 0; i < m_connectedClients.size(); i++)
+	//{
+	//		sendGameObjectToAllClients(newGameObject, m_connectedClients[i].sysAddress);
+	//}
+
+	sendGameObjectBackToClient(newGameObject);
+	
 	
 }
 
@@ -144,7 +149,15 @@ void Server::sendGameObjectToAllClients(GameObject& gameObject, RakNet::SystemAd
 	RakNet::BitStream bsOut;
 	bsOut.Write((RakNet::MessageID)GameMessages::ID_SERVER_FULL_OBJECT_DATA);
 	bsOut.Write(gameObject);
-	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, ownerSystemAddress, true);
+	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, ownerSystemAddress, false);
+}
+
+void Server::sendGameObjectBackToClient(GameObject& gameObject)
+{
+	RakNet::BitStream bsOut;
+	bsOut.Write((RakNet::MessageID)GameMessages::ID_SERVER_FULL_OBJECT_DATA);
+	bsOut.Write(gameObject);
+	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
 }
 
 void Server::moveGameObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSystemAddress)
@@ -168,19 +181,22 @@ void Server::moveGameObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& owne
 	}
 }
 
-void Server::LerpObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSystemAddress)
+void Server::LerpObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSystemAddress, float deltatime)
 {
 	GameObject myClientObject;
-	bsIn.Read(myClientObject);
+	bsIn.Read(myClientObject.uiObjectID);
+	bsIn.Read(myClientObject.uiOwnerClientID);
+	bsIn.Read(myClientObject.Velocity);
 
 	for (int i = 0; i < m_gameObjects.size(); i++)
 	{
 		if (m_gameObjects[i].uiObjectID == myClientObject.uiObjectID)
 		{
-			m_gameObjects[i] = myClientObject;
+			m_gameObjects[i].uiOwnerClientID = myClientObject.uiOwnerClientID;
+			m_gameObjects[i].Velocity = myClientObject.Velocity;
 			//lerp object
 
-			m_gameObjects[i].position += glm::vec3(myClientObject.Velocity, 0);
+			m_gameObjects[i].position += glm::vec3(myClientObject.Velocity, 0) * m_DeltaTime;
 
 			for (int j = 0; j < m_connectedClients.size(); j++)
 			{
@@ -191,4 +207,11 @@ void Server::LerpObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSys
 			}
 		}
 	}
+}
+
+void Server::CalculateDeltaTime()
+{
+	m_OldTime = m_NewTime;
+	m_NewTime = timeGetTime();
+	m_DeltaTime = m_NewTime - m_OldTime;
 }

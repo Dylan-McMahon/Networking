@@ -184,6 +184,7 @@ void BasicNetworkingApplication::createGameObject()
 	tempGameObject.fBlueColour = m_myColour.b;
 	tempGameObject.fForce = 2.0f;	
 	tempGameObject.eSyncType = POSITION_ONLY;
+	tempGameObject.bUpdatedObjectPostion = false;
 
 	//Copy the data to a packet
 	bsOut.Write((RakNet::MessageID)GameMessages::ID_CLIENT_CREATE_OBJECT);
@@ -195,8 +196,6 @@ void BasicNetworkingApplication::createGameObject()
 
 void BasicNetworkingApplication::moveClientObject(float deltatime)
 {
-	//Check ID validation
-	if (m_uiClientID == 0) return;
 	//Check Object validation
 	if (m_gameObjects.size() == 0) return;
 
@@ -210,6 +209,7 @@ void BasicNetworkingApplication::moveClientObject(float deltatime)
 		if (myClientObject.bUpdatedObjectPostion == true)
 		{
 			sendUpdatedObjectPositionToServer(myClientObject);
+			myClientObject.bUpdatedObjectPostion == false;
 		}
 	}
 
@@ -218,12 +218,14 @@ void BasicNetworkingApplication::moveClientObject(float deltatime)
 		if (myClientObject.bUpdatedObjectPostion == true)
 		{
 			myClientObject.Velocity += (myClientObject.fForce / 1) * deltatime;
+			sendObjectVelocityToServer(myClientObject);
 		}
 		else
 		{
 			myClientObject.Velocity = glm::vec2(0);
+			sendObjectVelocityToServer(myClientObject);
 		}
-		sendObjectVelocityToServer(myClientObject);
+		myClientObject.bUpdatedObjectPostion == false;
 	}
 }
 
@@ -266,13 +268,13 @@ void BasicNetworkingApplication::handleInput(float deltatime)
 
 void BasicNetworkingApplication::sendObjectVelocityToServer(GameObject& myClientObject)
 {
-	//Check ID validation
-	if (m_uiClientID == 0) return;
 	//Check Object validation
 	if (m_gameObjects.size() == 0) return;
 
 	RakNet::BitStream bsOut;
 	bsOut.Write((RakNet::MessageID)GameMessages::ID_CLIENT_UPDATE_OBJECT_VELOCITY);
+	bsOut.Write(myClientObject.uiObjectID);
+	bsOut.Write(myClientObject.uiOwnerClientID);
 	bsOut.Write(myClientObject.Velocity);
 	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
 }

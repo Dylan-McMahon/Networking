@@ -1,6 +1,7 @@
 #pragma once
 #include <iostream>
 #include <string>
+#include <time.h>
 
 #include <thread>
 #include <chrono>
@@ -35,7 +36,10 @@ protected:
 	void createNewObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSysAddress);
 	void sendGameObjectToAllClients(GameObject& gameObject, RakNet::SystemAddress& ownerSystemAddress);
 	void moveGameObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSystemAddress);
-	void LerpObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSystemAddress);
+	void LerpObject(RakNet::BitStream& bsIn, RakNet::SystemAddress& ownerSystemAddress, float deltatime);
+	void sendGameObjectBackToClient(GameObject& gameObject);
+
+	void CalculateDeltaTime();
 
 private:
 
@@ -52,4 +56,8 @@ private:
 	std::unordered_map<unsigned int, ConnectionInfo>	m_connectedClients;
 	std::vector<GameObject>								m_gameObjects;
 	unsigned int										m_uiObjectCounter;
+
+	float												m_OldTime;
+	float												m_NewTime;
+	float												m_DeltaTime;
 };
