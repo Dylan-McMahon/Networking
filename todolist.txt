@@ -1,0 +1,5 @@
+update velocity recieving method so that it updates every frame
+
+to be done in the client move object function, span off into checking the mode objects are in if they are in lerp mode update them via velocity
+
+hceck to see if positjion sync type velocity is set to default zero
