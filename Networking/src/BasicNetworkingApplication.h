@@ -49,6 +49,7 @@ public:
 	void moveClientObject(float deltatime);
 	void sendUpdatedObjectPositionToServer(GameObject& myClientObject);
 	void sendObjectVelocityToServer(GameObject& myClientObject);
+	void UpdateObjects(float deltatime);
 
 	//handle input
 	void handleInput(float deltatime);

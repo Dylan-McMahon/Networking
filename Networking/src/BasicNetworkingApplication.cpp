@@ -36,6 +36,7 @@ bool BasicNetworkingApplication::update(float deltaTime) {
 	{
 		handleInput(deltaTime);
 		moveClientObject(deltaTime);
+		UpdateObjects(deltaTime);
 	}
 	return true;
 }
@@ -185,6 +186,7 @@ void BasicNetworkingApplication::createGameObject()
 	tempGameObject.fForce = 2.0f;	
 	tempGameObject.eSyncType = POSITION_ONLY;
 	tempGameObject.bUpdatedObjectPostion = false;
+	tempGameObject.Velocity = glm::vec2(0);
 
 	//Copy the data to a packet
 	bsOut.Write((RakNet::MessageID)GameMessages::ID_CLIENT_CREATE_OBJECT);
@@ -277,4 +279,13 @@ void BasicNetworkingApplication::sendObjectVelocityToServer(GameObject& myClient
 	bsOut.Write(myClientObject.uiOwnerClientID);
 	bsOut.Write(myClientObject.Velocity);
 	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
+}
+
+void BasicNetworkingApplication::UpdateObjects(float deltatime)
+{
+	for (int i = 0; i < m_gameObjects.size(); i++)
+	{
+		if (m_gameObjects[i].uiOwnerClientID != m_uiClientID)
+			m_gameObjects[i].position += glm::vec3(m_gameObjects[i].Velocity, 0) * deltatime;
+	}
 }
