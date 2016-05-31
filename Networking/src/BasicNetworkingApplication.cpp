@@ -1,7 +1,8 @@
 #include "BasicNetworkingApplication.h"
 
 BasicNetworkingApplication::BasicNetworkingApplication() {
-
+	m_eSyncType = POSITION_ONLY;
+	m_uiClientObjectIndex = -1;
 }
 
 BasicNetworkingApplication::~BasicNetworkingApplication() {
@@ -9,7 +10,7 @@ BasicNetworkingApplication::~BasicNetworkingApplication() {
 }
 
 bool BasicNetworkingApplication::startup() {
-	// setup the basic window
+	/// setup the basic window
 	createWindow("Client Application", 1280, 720);
 	Gizmos::create();
 	m_pCamera = new Camera(glm::pi<float>() * 0.25f, 16 / 9.f, 0.1f, 1000.f);
@@ -26,7 +27,7 @@ void BasicNetworkingApplication::shutdown() {
 }
 
 bool BasicNetworkingApplication::update(float deltaTime) {
-	// close the application if the window closes
+	/// close the application if the window closes
 	if (glfwWindowShouldClose(m_window) ||
 		glfwGetKey(m_window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
 		return false;
@@ -55,22 +56,22 @@ void BasicNetworkingApplication::draw() {
 
 void BasicNetworkingApplication::HandleNetworkConnection()
 {
-	//Initiialize the Raknet peer interface first
+	///Initiialize the Raknet peer interface first
 	m_pPeerInterface = RakNet::RakPeerInterface::GetInstance();
 	InitalizeClientConnection();
 }
 
 void BasicNetworkingApplication::InitalizeClientConnection()
 {
-	//Craete a socet description 
-	//no data needed to conect to a server
+	///Craete a socet description 
+	///no data needed to conect to a server
 	RakNet::SocketDescriptor sd;
-	//Call startup - Max connections 1(connection to the server)
+	///Call startup - Max connections 1(connection to the server)
 	m_pPeerInterface->Startup(1, &sd, 1);
 	std::cout << "Connecting to server at: " << IP << std::endl;
-	//call raknet connect
+	///call raknet connect
 	RakNet::ConnectionAttemptResult res = m_pPeerInterface->Connect(IP, PORT, nullptr, 0);
-	//Connection check
+	///Connection check
 	if (res != RakNet::CONNECTION_ATTEMPT_STARTED)
 	{
 		std::cout << "Unable to start connection, Error number: " << res << std::endl;
@@ -129,9 +130,19 @@ void BasicNetworkingApplication::HandleNetworkMessages()
 		}
 		case ID_SERVER_FULL_OBJECT_DATA:
 		{
-			RakNet::BitStream bsIn(pPacket->data, pPacket->length, false);
-			bsIn.IgnoreBytes(sizeof(RakNet::MessageID));
-			readObjectsFromServer(bsIn);
+				RakNet::BitStream bsIn(pPacket->data, pPacket->length, false);
+				bsIn.IgnoreBytes(sizeof(RakNet::MessageID));
+				readObjectsFromServer(bsIn);
+				break;
+		}
+		case ID_SERVER_VELOCITY_OBJECT_DATA:
+		{
+			if (m_eSyncType != POSITION_ONLY)
+			{
+				RakNet::BitStream bsIn(pPacket->data, pPacket->length, false);
+				bsIn.IgnoreBytes(sizeof(RakNet::MessageID));
+				readObjectVelocityFromServer(bsIn);
+			}
 			break;
 		}
 		default:
@@ -144,11 +155,11 @@ void BasicNetworkingApplication::HandleNetworkMessages()
 
 void BasicNetworkingApplication::readObjectsFromServer(RakNet::BitStream& bsIn)
 {
-	//Create temp object that we will pull all the objects data into
+	///Create temp object that we will pull all the objects data into
 	GameObject tempGameObject;
-	//Read in object data
+	///Read in object data
 	bsIn.Read(tempGameObject);
-	//Check to so if it exists already
+	///Check to so if it exists already
 	bool bFound = false;
 	for (int i = 0; i < m_gameObjects.size(); i++)
 	{
@@ -157,11 +168,16 @@ void BasicNetworkingApplication::readObjectsFromServer(RakNet::BitStream& bsIn)
 			bFound = true;
 			//Update the object
 			GameObject& obj = m_gameObjects[i];
+			obj.bUpdatedObjectVelocity =	tempGameObject.bUpdatedObjectVelocity;
+			obj.bUpdatedObjectPosition =	tempGameObject.bUpdatedObjectPosition;
+			obj.Velocity =					tempGameObject.Velocity;
+			obj.newPosition =				tempGameObject.position;
+
 			obj = tempGameObject;
 		}
 	}
 
-	//If it doesnt exist create it.
+	///If it doesnt exist create it.
 	if (!bFound)
 	{
 		m_gameObjects.push_back(tempGameObject);
@@ -172,62 +188,81 @@ void BasicNetworkingApplication::readObjectsFromServer(RakNet::BitStream& bsIn)
 	}
 }
 
+void BasicNetworkingApplication::readObjectVelocityFromServer(RakNet::BitStream & bsIn)
+{
+	unsigned int uiObjectID;
+	unsigned int uiConnectionID;
+	glm::vec2    vVelocity;
+
+	bsIn.Read(uiObjectID);
+	bsIn.Read(uiConnectionID);
+	bsIn.Read(vVelocity);
+
+	if (uiConnectionID == m_uiClientID) return;
+
+	for (int i = 0; i < m_gameObjects.size(); i++)
+	{
+		if (m_gameObjects[i].uiObjectID == uiObjectID)
+		{
+			m_gameObjects[i].Velocity = vVelocity;
+			break;
+		}
+	}
+}
+
+
 void BasicNetworkingApplication::createGameObject()
 {
-	//Tell the server to create an object
+	///Tell the server to create an object
 	RakNet::BitStream bsOut;
 
 	GameObject tempGameObject;
+	tempGameObject.uiOwnerClientID = m_uiClientID;
 	tempGameObject.position.x = 0.0f;
 	tempGameObject.position.z = 0.0f;
 	tempGameObject.fRedColour = m_myColour.r;
 	tempGameObject.fGreenColour = m_myColour.g;
 	tempGameObject.fBlueColour = m_myColour.b;
 	tempGameObject.fForce = 2.0f;	
-	tempGameObject.eSyncType = POSITION_ONLY;
-	tempGameObject.bUpdatedObjectPostion = false;
+	tempGameObject.bUpdatedObjectVelocity = false;
+	tempGameObject.bUpdatedObjectPosition = false;
 	tempGameObject.Velocity = glm::vec2(0);
+	tempGameObject.newPosition = glm::vec3(0);
 
-	//Copy the data to a packet
+	///Copy the data to a packet
 	bsOut.Write((RakNet::MessageID)GameMessages::ID_CLIENT_CREATE_OBJECT);
 	bsOut.Write(tempGameObject);
 
-	//Send the data
+	///Send the data
 	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
 }
 
 void BasicNetworkingApplication::moveClientObject(float deltatime)
 {
-	//Check Object validation
-	if (m_gameObjects.size() == 0) return;
+	///Check Movement
 
+	///Move the object
+
+	///Check Object validation
+	if (m_uiClientObjectIndex == -1) return;
+	if(m_gameObjects.size() == 0) return;
 	//Check Movement
 	GameObject& myClientObject = m_gameObjects[m_uiClientObjectIndex];
-
-	//Move the object
-
-	if (myClientObject.eSyncType == POSITION_ONLY)
+	
+	if (myClientObject.bUpdatedObjectVelocity)
 	{
-		if (myClientObject.bUpdatedObjectPostion == true)
-		{
-			sendUpdatedObjectPositionToServer(myClientObject);
-			myClientObject.bUpdatedObjectPostion == false;
-		}
+		sendObjectVelocityToServer(myClientObject);
+		myClientObject.bUpdatedObjectVelocity = false;
 	}
 
-	if (myClientObject.eSyncType == LERP)
+	static float positionSendTimer = 0.0f;
+	positionSendTimer += deltatime;
+	if (positionSendTimer > 0.5f)
 	{
-		if (myClientObject.bUpdatedObjectPostion == true)
-		{
-			myClientObject.Velocity += (myClientObject.fForce / 1) * deltatime;
-			sendObjectVelocityToServer(myClientObject);
-		}
-		else
-		{
-			myClientObject.Velocity = glm::vec2(0);
-			sendObjectVelocityToServer(myClientObject);
-		}
-		myClientObject.bUpdatedObjectPostion == false;
+		myClientObject.bUpdatedObjectPosition = true;
+		myClientObject.newPosition = myClientObject.position;
+		sendUpdatedObjectPositionToServer(myClientObject);
+		positionSendTimer = 0.0f;
 	}
 }
 
@@ -241,36 +276,38 @@ void BasicNetworkingApplication::sendUpdatedObjectPositionToServer(GameObject& m
 
 void BasicNetworkingApplication::handleInput(float deltatime)
 {
+	if (m_uiClientObjectIndex == -1) return;
+
 	GameObject& myClientObject = m_gameObjects[m_uiClientObjectIndex];
 
 	if (glfwGetKey(m_window, GLFW_KEY_I))
 	{
-		myClientObject.position.z += myClientObject.fForce * deltatime;
-		myClientObject.bUpdatedObjectPostion = true;
+		myClientObject.Velocity = glm::vec2(0, 4);
+		myClientObject.bUpdatedObjectVelocity = true;
 	}
 	if (glfwGetKey(m_window, GLFW_KEY_K))
 	{
-		myClientObject.position.z -= myClientObject.fForce * deltatime;
-		myClientObject.bUpdatedObjectPostion = true;
+		myClientObject.Velocity = glm::vec2(0, -4);
+		myClientObject.bUpdatedObjectVelocity = true;
 	}
 
 	if (glfwGetKey(m_window, GLFW_KEY_1))
 	{
-		myClientObject.eSyncType = POSITION_ONLY;
+		m_eSyncType = POSITION_ONLY;
 	}
 	if (glfwGetKey(m_window, GLFW_KEY_2))
 	{
-		myClientObject.eSyncType = LERP;
+		m_eSyncType = LERP;
 	}
 	if (glfwGetKey(m_window, GLFW_KEY_3))
 	{
-		myClientObject.eSyncType = INTERPOLATION;
+		m_eSyncType = INTERPOLATION;
 	}
 }
 
 void BasicNetworkingApplication::sendObjectVelocityToServer(GameObject& myClientObject)
 {
-	//Check Object validation
+	///Check Object validation
 	if (m_gameObjects.size() == 0) return;
 
 	RakNet::BitStream bsOut;
@@ -283,9 +320,29 @@ void BasicNetworkingApplication::sendObjectVelocityToServer(GameObject& myClient
 
 void BasicNetworkingApplication::UpdateObjects(float deltatime)
 {
-	for (int i = 0; i < m_gameObjects.size(); i++)
+	if (m_eSyncType == INTERPOLATION)
 	{
-		if (m_gameObjects[i].uiOwnerClientID != m_uiClientID)
-			m_gameObjects[i].position += glm::vec3(m_gameObjects[i].Velocity, 0) * deltatime;
+		for (int i = 0; i < m_gameObjects.size(); i++)
+		{
+			if (m_gameObjects[i].bUpdatedObjectPosition == true && m_gameObjects[i].uiOwnerClientID != m_uiClientID)
+			{
+				float time = timeGetTime();
+				time -= m_gameObjects[i].timeStamp;
+				m_gameObjects[i].newPosition = m_gameObjects[i].position + glm::vec3(m_gameObjects[i].Velocity.x, 0, m_gameObjects[i].Velocity.y) * time;
+				m_gameObjects[i].position += glm::lerp(m_gameObjects[i].position, m_gameObjects[i].newPosition, deltatime) / deltatime;
+			}
+			else
+			{
+				m_gameObjects[i].position += glm::vec3(m_gameObjects[i].Velocity.x, 0, m_gameObjects[i].Velocity.y) * deltatime;
+			}
+			m_gameObjects[i].bUpdatedObjectPosition = false;
+		}
+	}
+	else
+	{
+		for (int i = 0; i < m_gameObjects.size(); i++)
+		{
+			m_gameObjects[i].position += glm::vec3(m_gameObjects[i].Velocity.x, 0, m_gameObjects[i].Velocity.y) * deltatime;
+		}
 	}
 }

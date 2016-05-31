@@ -1,12 +1,6 @@
 #pragma once
 #include "../dep/glm/glm/ext.hpp"
 
-enum SyncType
-{
-	POSITION_ONLY,
-	LERP,
-	INTERPOLATION
-};
 
 struct GameObject {
 	unsigned int uiOwnerClientID;
@@ -19,11 +13,13 @@ struct GameObject {
 	float fForce;
 
 	glm::vec3 position;
+	glm::vec3 newPosition;
 	float fAcceleration;
 	glm::vec2 Velocity;
+	float timeStamp;
 
-	SyncType eSyncType;
 
-	bool bUpdatedObjectPostion;
+	bool bUpdatedObjectVelocity;
+	bool bUpdatedObjectPosition;
 
 };

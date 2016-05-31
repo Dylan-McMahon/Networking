@@ -18,6 +18,14 @@
 #include <BitStream.h>
 #include <Rand.h>
 
+
+enum SyncType
+{
+	POSITION_ONLY,
+	LERP,
+	INTERPOLATION
+};
+
 typedef unsigned int uint;
 
 namespace RakNet {
@@ -43,6 +51,7 @@ public:
 	//Handle incoming packets
 	void HandleNetworkMessages();
 	void readObjectsFromServer(RakNet::BitStream& bsIn);
+	void readObjectVelocityFromServer(RakNet::BitStream& bsIn);
 
 	//Handle GameObjects
 	void createGameObject();
@@ -64,4 +73,6 @@ private:
 	std::vector<GameObject> m_gameObjects;
 	Camera* m_pCamera;
 
+
+	SyncType m_eSyncType;
 };
